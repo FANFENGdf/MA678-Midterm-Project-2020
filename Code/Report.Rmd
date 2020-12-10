@@ -116,13 +116,15 @@ p2 <- ggplot(data = dtn) + geom_point(aes(y=rownames(dtn),x=Estimate)) +
 ```{r,echo=FALSE,results= 'asis', fig.cap='\\label{fig:figs} The error bars of the the Multilevel Linear Model',fig.height=6,fig.width=8}
 grid.arrange(p1,p2)
 ```
+
+\newpage
 ### A. Model Comparison and  Estimation
 
 As is shown in Figure 2, the estimation of each predictor from two models is relatively similar, even though we treated the respond variable in a different way. It should be pointed out that the x axis of two error bars have different meaning because of the different link functions used.
 
 In terms of the estimation, we can find the estimated coefficients of each variable and the 95% confidence interval. As predictors, Service, environment and flavor have strong evidence of positive effect on the ratings. We can find that the score of flavor is the strongest effect on rating of a restaurant. While the predictors wifi and free_parking do not have strong evidence of the effect on the rating. In addition, the avg_cost is seems to have some evidence of showing very slightly negative effect on the rating. 
 
-### C. Validation
+### B. Validation
 
 Firstly, if we look at the random effects, we find that the variation between different food styles is very close to zero, which means that the correlation with each food style is very small. However, we did not remove the random effect even thou it is not that significant. 
 
@@ -169,6 +171,7 @@ pp3<-ggplot(data,aes(y=fitted,x = jitter(service))) +
 grid.arrange(pp1,pp2,pp3,ncol = 3)
 ```
 
+\newpage
 # Discussion
 
 In the end, we can answer the question of this project: what are the factors influence the rating of a restaurant which is calculated based on the mechanism of Dianping?
