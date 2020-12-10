@@ -1,0 +1,156 @@
+---
+title: "Data Preparation"
+author: "Fan Feng"
+date: "2020/12/3"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readr)
+library(tidyverse)
+library(dplyr)
+library(tibble)
+library(magrittr)
+```
+
+# import the raw datasets
+```{r, warning=FALSE}
+guess_encoding("D:/dianping/dataset/businesses.txt")
+
+city <- read.table("D:/dianping/dataset/city.txt",encoding = "UTF-8")
+
+business <- read.table("D:/dianping/dataset/businesses.txt",
+                       header = F, encoding = "UTF-8",sep = '^',skip = 1)
+
+review <- read.table("D:/dianping/dataset/reviews.txt",header = F, skip = 1,
+                     encoding = "UTF-8",sep = '^',fill = TRUE)
+```
+
+```{r}
+city <- city %>% separate(V1,c('city_name','city_code'),sep = '=')
+names(business) <- c('b_link','business_info')
+names(review) <- c('r_link','review_info')
+business_new <- business %>% select(-1) %>% filter(str_detect(business[,2], ",1:")) 
+#review_new <- review %>% filter(!str_detect(review[,2],'rate:-1')) 
+```
+
+# select the businesses in shanghai(city code equals 1)
+```{r}
+bus <- business_new %>% filter(str_detect(business_info, ",2:1,"))
+#29587 observation
+```
+
+# separate the information of businesses into columns
+```{r}
+# try small dataset
+#sh_try <- as_tibble(shanghai_bus[1:200,])
+names(bus) <- 'sh_info'
+bus %<>% 
+  separate(sh_info,c('business_id','other'),sep = ',1:') %<>%
+  separate(other,c('p1','p2','p3','p4','p5','p6','p7','p8','p9_other'),sep = ',[0-9]:')
+
+bus %<>% separate(p9_other, c('p9','else_info'),sep = ',10:') %<>% 
+  separate(else_info, c('p10','p11','p12','p13','p14','p15','p17','p16','p19',
+                        'p18','p21','p20'),sep = ',[0-9][0-9]:')
+
+bus$business_id <- str_replace(bus$business_id, "\\{0:", "")
+names(bus) <- c('business_id','business_name','city_code','rating','flavor',
+                   'environment','service','address','tel','share','description','dish',
+                   'atmosphere','special','shop_hour','traffic','longitude','latitude',
+                   'avg_cost','style','area','tags')
+#sh_try %<>% separate(business_id,'business_id',sep = '')
+bus$business_id <- sub(" ", "", bus$business_id)
+```
+
+# further celaning, check each columns
+```{r}
+bus %>% summarize_all(n_distinct)
+```
+
+# remove rows with other city code (double check)
+```{r}
+#unique(bus$city_code)
+#code <- bus %>% group_by(city_code) %>% tally()
+bus <- bus %>% filter(city_code == 1)
+```
+
+# remove the rows with rating equals 0
+```{r}
+bus %<>% filter(rating != '0.0') 
+unique(bus$rating)
+```
+
+# how to select the styles of interest
+```{r}
+hotpot <- bus %>% filter(style %in% c('火锅','涮羊肉')) %>% mutate(food_style ='hotpot')
+sichuan <- bus %>% filter(style == '川菜') %>% mutate(food_style ='sichuan')
+guangdong <- bus %>% 
+  filter(style %in% c('粤菜','茶餐厅','港台甜品'))%>% 
+  mutate(food_style ='guangdong')
+hunan <- bus %>% filter(style == '湘菜') %>% mutate(food_style ='hunan')
+northeast <- bus %>% filter(style == '东北菜') %>% mutate(food_style ='northeast')
+local <- bus %>% 
+  filter(style %in% c('本帮菜','本帮江浙菜')) %>% 
+  mutate(food_style ='local')
+western_china <- bus %>% 
+  filter(style %in% c('新疆/清真','西北风味')) %>% 
+  mutate(food_style ='western_china')
+japan <- bus %>% 
+  filter(style %in% c('日本','日本料理','日式烧烤/铁板烧','寿司/简餐','日式自助')) %>% 
+  mutate(food_style ='japan')
+south_korea <- bus %>% filter(style == '韩国料理') %>% mutate(food_style ='south_korea')
+western <- bus %>% 
+  filter(style %in% c('牛排','意大利菜','西班牙菜','法国菜','西餐','其他西餐')) %>%
+  mutate(food_style ='western')
+
+bus <- do.call("rbind", list(hotpot,sichuan,guangdong,hunan,northeast,local,
+                             western_china,japan,south_korea,western))
+```
+
+# clean and select the districts in shanghai 
+```{r}
+bus %<>% 
+   separate(area,c('drop','district'),sep = 6) %<>% 
+   separate(district,c('district','road'),sep = '\\(') %<>%
+   select(-drop,-road)
+
+bus$district %>% unique()
+bus %<>% 
+filter(district %in% c("徐汇区","杨浦区","浦东新区","青浦区","普陀区","闵行区",
+"闸北区","黄浦区","嘉定区","宝山区","长宁区","虹口区","松江区","静安区","卢湾区"))
+```
+
+# save the cleaned files
+```{r}
+write.csv(bus,'shanghai_business_info.csv')
+```
+
+# filter & combine the review dataset based on the business id 
+```{r}
+# remove the link
+review <- review %>% separate(r_link, c('link','business_id'),sep = 29)
+# remove the white space
+review %<>% separate(business_id,'business_id',sep = 7)
+# merge the two datasets
+review %<>% filter(business_id %in% bus$business_id)
+sh_trytry <- merge(review,bus, by= "business_id", all.x = TRUE)
+```
+
+# clean the review info in the combined dataset sh_trytry
+```{r}
+combine_clean <- sh_trytry %>% 
+  separate(review_info,c('drop','user_id','r_rating','r_time','rest_id',
+                         'r_flavor','r_environ','r_service','r_cost',
+                         'r_stage','r_waiting','r_content','r_dishes','r_atmos','special'),
+           sep = ',\\w+:')
+
+combine_clean %<>% select(-drop,-link,-rest_id)
+```
+
+#save the dataframe
+```{r}
+write.csv(combine_clean,'shanghai_dianping_info.csv')
+```
+
+

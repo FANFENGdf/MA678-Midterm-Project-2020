@@ -1,0 +1,140 @@
+---
+title: "Modelling"
+author: "Fan Feng"
+date: "2020/12/8"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+pacman::p_load(readr,ggplot2,knitr,arm,data.table,foreign,gridExtra,car,
+               dplyr,bayesplot,stringr,rstan,rstanarm,zoo,magrittr,tidyverse,dplyr)
+library(lme4)
+library(ordinal)
+```
+
+
+```{r}
+#review<- read.csv('D:/dianping/shanghai_dianping_info.csv')
+data <- read.csv('D:/dianping/data_for_modelling.csv')
+```
+
+```{r}
+data$free_parking <- as.factor(data$free_parking)
+data$wifi <- as.factor(data$wifi)
+data$delivery <- as.factor(data$delivery)
+data$food_style <- as.factor(data$food_style)
+data$district <- as.factor(data$district)
+#summary(data)
+```
+
+transformation: centering and standardizing some continuous variables
+In the regression, the binary predictors are left as they are and the continuous predictors are linearly transformed by centering and standardizing. It can help us interpret the main effects on a roughly common scale.
+```{r}
+data$flavor = (data$flavor - mean(data$flavor))/(2*sd(data$flavor))
+data$environment = (data$environment - mean(data$environment))/(2*sd(data$environment))
+data$service = (data$service - mean(data$service))/(2*sd(data$service))
+data$share = (data$share - mean(data$share))/(2*sd(data$share))
+```
+
+
+
+```{r}
+lmm <- lm(rating ~ flavor + environment + service + share + avg_cost +
+              wifi + free_parking + food_style + district, data = data)
+AIC(lmm)
+```
+
+```{r}
+fit <- lmer(rating ~ flavor + environment + service + share + avg_cost +
+              wifi + free_parking + (1|food_style), data = data)
+summary(fit)
+```
+
+```{r}
+AIC(fit)
+```
+```{r}
+plot(fit)
+```
+
+
+```{r}
+# estimated regression coefficients
+coef(fit)
+fixed(fit)
+ranef(fit)
+# uncertainties in the estimated coefficients
+se.fixef(fit)
+se.ranef(fit)
+```
+# plot the errorbar of the estimated coefficients
+# Display the estimated model graphically
+# ppcheck
+# residual plot
+# make predictions
+# interpretation of coefficients
+add random effects
+
+
+# Method 2: Multilevel Ordered Categorial Regression
+
+If we treat the rating of restaurants as the ordinal categorical variable, considering the multilevel structure in our data, we can apply the ordered multinomial regression with random effects. We realized this method by using the cumulative link mixed models(CLMMs) in 'ordinal' package[] in R. The maximum likelihood based on Newton-Raphson method is used to estimate the model parameters. 
+
+公式在此
+
+When fitting the model, we should be aware of that the most important assumption in our model is called the proportional odds assumption. Under this assumption, the effects of predictors are the same for each increase in the level of the outcome variable. 
+
+```{r, echo=FALSE}
+#unique(data$rating)
+data$rating_2 <- factor(data$rating, levels = c(1,2,3,3.5,4,4.5,5), ordered = TRUE)
+```
+
+```{r,echo=FALSE}
+order_model <- clmm(rating_2 ~flavor + environment + service + share + avg_cost + 
+                      wifi + free_parking + (1|food_style), data = data)
+summary(order_model)
+```
+
+```{r}
+ranef(order_model)
+```
+
+An examination of the results presented above reveals that the variance and standard deviation of intercepts across schools both equal 1, respectively. Because the variation is not near 0, we conclude that differences in intercepts are present from one school to the next. 
+
+In addition, we see a signifcant positive relationship between flavor and rating of a restaurant. This indicates that restaurants with higher score of flavor
+also are more likely to attain higher overall ratings.
+We also obtain estimates of the model intercepts (termed thresholds by clmm). 
+As shown in the single-level cumulative logits model, the intercept represents the log
+odds of the likelihood of one response versus the other (e.g., 1 versus 2)
+when the value of the predictor variable is 0. 
+
+A computation score of 0 would indicate that the student did not answer any of the items on the test correctly. Applying this fact to the first intercept presented above and the exponentiation of the intercept demonstrated in the previous chapter,
+we can conclude that the odds of a person with a computation score of
+1 passing the math achievement exam are e9.5741 = 14,387.28 to 1 or very
+high! 
+
+
+# creat a dataframe to plot the error bars
+```{r}
+coefs = order_model$coefficients
+coefs = data.frame(coefs)
+coefs
+```
+
+# plot the error bars for the variables
+```{r, echo = FALSE, results= 'asis', fig.cap='\\label{fig:figs} The estimated coefficients and 95% confidence interval for each fixed effect in the cumulative link mixed model. The value of esimated coefficient is displayed above each point estimate. Zero is highlighted with a dotted blue line',fig.height=3}
+ggplot(dtn, aes(x = value, y = variable, xmin = low, xmax = up, label = Dispval)) +
+  geom_vline(aes(xintercept = 0), color = 'darkblue',linetype = 'dashed', alpha = 1) +
+  theme_bw() + geom_point() +
+  geom_errorbarh(height = 0) +
+  geom_text(nudge_y = 0.205, nudge_x = 0.003, size = 2)
+```
+
+
+
+```{r}
+order2_model <- clmm2(rating_2 ~flavor + environment, random = food_style, data = data)
+summary(order2_model)
+```
+

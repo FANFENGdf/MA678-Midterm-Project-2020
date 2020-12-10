@@ -1,0 +1,236 @@
+---
+title: "EDA & Feature Engineering"
+author: "Fan Feng"
+date: "2020/12/4"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readr)
+library(tidyverse)
+library(dplyr)
+library(tibble)
+library(magrittr)
+library(ggplot2)
+```
+
+# import the dataset
+```{r}
+review<- read.csv('D:/dianping/shanghai_dianping_info.csv')
+bus <- read.csv('D:/dianping/shanghai_business_info.csv')
+```
+
+```{r}
+bus %<>% select('business_id','business_name','rating','flavor','environment',
+                'service','share','special','avg_cost','food_style','district',
+                'longitude','latitude')
+```
+
+# Add some new features: free_parking, wifi, delivery
+```{r}
+bus$free_parking <- ifelse(str_detect(bus$special,'免费停车'),1,0)
+bus$wifi <- ifelse(str_detect(bus$special,'无线上网'),1,0)
+bus$delivery <- ifelse(str_detect(bus$special,'可送外卖'),1,0)
+#bus$allday <- ifelse(str_detect(bus$special,'24小时营业'),1,0)
+#bus$night_food <- ifelse(str_detect(bus$special,'供应宵夜'),1,0)
+bus %<>% select(-special)
+```
+
+check the NAs in some certain columns
+```{r}
+bus <- bus[!is.na(bus$food_style), ]
+```
+
+```{r}
+bus %>% summarize_all(n_distinct)
+```
+
+
+```{r}
+#看一下每种菜式有多少家店
+style_count <- bus %>% 
+  group_by(food_style) %>% 
+  tally()
+```
+
+```{r}
+#county_amount[rev(order(county_amount$sum))[1:5],]
+ggplot(style_count, 
+       aes(x = reorder(food_style,n), y = n)) +
+   geom_bar(stat = 'identity') +
+   xlab('') + ylab('') +
+   ggtitle('')+
+   coord_flip()
+```
+
+```{r}
+#unique(bus$rating)
+#看一下每种评分有多少家店
+bus$rating <- factor(bus$rating, levels= c(1,2,3,3.5,4,4.5,5))
+rating_count <- bus %>% 
+  group_by(rating) %>% 
+  tally()
+```
+
+```{r}
+#county_amount[rev(order(county_amount$sum))[1:5],]
+ggplot(rating_count, 
+       aes(x = rating, y = n)) +
+   geom_bar(stat = 'identity') +
+   xlab('') + ylab('') +
+   ggtitle('')
+```
+
+
+```{r}
+#看下每家店平均的评论数是多少
+review_count <- review %>% 
+  group_by(business_id) %>% 
+  tally()
+bus <- merge(bus,review_count, by= "business_id", all.x = TRUE)
+```
+
+```{r}
+#看下每种菜式的店平均的评论数是多少
+#write.csv(bus,'data_for_modelling.csv')
+```
+
+```{r}
+ggplot(data = data)+
+  geom_point(aes(x=flavor,y = rating))
+
+ggplot(data = data)+
+  geom_point(aes(x=environment,y = rating))
+
+ggplot(data = data)+
+  geom_point(aes(x=service,y = rating))
+
+ggplot(data = data)+
+  geom_point(aes(x=share,y = rating))
+
+ggplot(data = data)+
+  geom_point(aes(x=avg_cost,y = rating))
+
+#ggplot(data = data)+
+#  geom_point(aes(x=food_style,y = rating))
+
+#ggplot(data = data) +
+#  geom_point(aes(x = district,y = rating))
+```
+
+
+```{r}
+ggplot(data = data, aes(x = rating,  ))
+```
+
+```{r}
+x = resid(ml_model)
+y = predict(ml_model)
+binnedplot(x,y)
+
+fm2 <- clmm(rating_2 ~flavor + environment + service + share + avg_cost + 
+                      wifi + free_parking + (1|food_style), data = data)
+
+
+pred <- function(eta, theta, cat = 1:(length(theta) + 1), inv.link = plogis) {
+  Theta <- c(-1000, theta, 1000)
+  sapply(cat, function(j) inv.link(Theta[j + 1] - eta) - inv.link(Theta[j] - eta))}
+
+plot.probabilities3<-function(grid, model, comp.data=NULL, title="", ylim=NULL) {
+  co <- model$coefficients[1:length(model$y.levels)-1]
+  pre.mat <- pred(eta=rowSums(grid), theta=co)
+  df<-data.frame(levels=as.numeric(model$y.levels))
+  df["avg"] <- pre.mat[1,]
+  df["low"] <- pre.mat[2,]
+  df["high"] <- pre.mat[3,]
+  if(!is.null(comp.data)) {
+     df["freq"] <- summary(comp.data)/sum(summary(comp.data))
+  }
+  plot1 <- ggplot(data=df, aes(x=levels, y=avg)) + geom_line() + geom_point() +
+  ggtitle(title) + ylab("probability") + xlab("") +
+  geom_line(aes(x=levels, y=low), colour="#CCCCCC") +
+  geom_line(aes(x=levels, y=high), colour="#CCCCCC")
+  if(!is.null(comp.data)) {
+     plot1 <- plot1 +
+     geom_line(aes(x=levels, y=freq), lty="dotted")
+  }
+  if(!is.null(ylim)) {
+     plot1 <- plot1 + ylim(0, ylim)
+  }
+  return(plot1)
+}
+
+```
+
+random effects
+```{r,echo=F,fig.cap="\\label{fig:figs} Point estimates and 95% confidence intervals of the random effects of the linear mixed effects model."}
+re_plot <- as.data.frame(ranef(order_model))
+ggplot(re_plot,aes(y=grp,x=condval)) + geom_vline(aes(xintercept=0),color="darkblue",linetype="dashed",alpha=1) +
+  geom_point() +
+  geom_errorbarh(aes(xmin=condval -2*condsd,xmax=condval+2*condsd),height=0) + ylab("Island") + theme_bw() +
+  xlab("Random Effect")
+```
+
+1. Abstract (a paragraph): high-level summary of your work.
+2. Introduction: Background and other information necessary to understand your work.
+   2.1 Background(introduce app dianping, why we do this project)
+   2.2 Goal(what is the meaning of this project, method outline)
+   2.2 Data and Feature engineering
+       (source,size,variable introduction,feature engineering)
+3. Method: What you did in some detail. (No code + no raw output)
+   3.1 linear regression
+   3.2 multinomial logistic regression/Add random effects
+   
+4. Result: What you found 
+   evaluation metric
+   prediction the table of the models/ model comparison
+   model validataion and accessment
+   
+5. Discussion: What you think this means and what are the next steps.
+   conclusion/ limitations/ future work
+   challenge of big data
+   conclusion
+   
+Appendix: (not part of the page limit)
+All the supporting results and details that may get in the way of your argument goes here. Model checking details, figures that are not crucial. 
+
+Supplement: Code, etc
+
+
+We have 29587 restaurants in total, but we found that we have 13819 restaurants without any information about ratings. Even many of them have reviews.
+tips: the time of the data being collected should be noticed.
+
+Cleaning:
+1. our focus of analysis should be the business
+   first clean the business data set, then work on the reviews dataset
+2. remove all the businesses without ratings or rating==0
+
+3. only select ten styles of food(interest & popularity)
+4. show the district in shanghai (further cleaning)
+5. select the useful variables:
+flavor/environment/service/avg_cost/share/style/area/time
+(feature engineering)
+number of reviews/proportion of pos or neg words in the reviews
+proportion of the ratings in the reviews
+
+
+
+Modeling:
+Feature engineering: add some variables
+modeling fitting:
+multinomial model: because the oucome is 3 levels/5 levels 
+0.5/1.0/2.0/3.0/3.5/4.0/4.5/5.0
+Add the random effects: style/district/business id
+
+Validation and Disnostic:
+accessing the fit of the model
+residual analysis
+simulation checking
+interpretation:
+
+Discussion: limitations and future work
+
+Conclusion:
+
+Reference:
